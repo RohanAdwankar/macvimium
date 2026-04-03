@@ -4,7 +4,7 @@ import AppKit
 final class HintOverlayController {
     private var windows: [HintOverlayWindow] = []
 
-    func show(targets: [HintTarget], query: String) {
+    func show(targets: [DisplayHintTarget], query: String) {
         hide()
 
         for screen in NSScreen.screens {
@@ -26,7 +26,7 @@ final class HintOverlayController {
 
 @MainActor
 final class HintOverlayView: NSView {
-    var targets: [HintTarget] = [] {
+    var targets: [DisplayHintTarget] = [] {
         didSet { needsDisplay = true }
     }
 
@@ -44,7 +44,7 @@ final class HintOverlayView: NSView {
         }
     }
 
-    private func drawTag(for target: HintTarget) {
+    private func drawTag(for target: DisplayHintTarget) {
         guard let screenFrame = window?.screen?.frame else {
             return
         }

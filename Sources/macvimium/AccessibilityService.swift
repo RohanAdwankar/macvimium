@@ -8,6 +8,11 @@ struct HintTarget {
     let element: AXUIElement
 }
 
+struct DisplayHintTarget {
+    let label: String
+    let frame: CGRect
+}
+
 @MainActor
 final class AccessibilityService {
     func requestTrustIfNeeded() -> Bool {

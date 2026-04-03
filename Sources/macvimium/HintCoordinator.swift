@@ -41,7 +41,7 @@ final class HintCoordinator {
         self.targetApplication = frontmostApp
         query = ""
         NSApp.activate(ignoringOtherApps: true)
-        overlayController.show(targets: targets, query: query)
+        overlayController.show(targets: displayTargets(from: targets), query: query)
         installKeyMonitor()
     }
 
@@ -99,17 +99,21 @@ final class HintCoordinator {
     }
 
     private func refresh() {
-        overlayController.show(targets: targets, query: query)
+        overlayController.show(targets: displayTargets(from: targets), query: query)
     }
 
     private func activate(_ target: HintTarget) {
         print("macvimium: activating hint \(target.label)")
+        let targetApplication = self.targetApplication
+        let selectedTarget = target
         overlayController.hide()
         uninstallKeyMonitor()
         query = ""
         targets = []
-        targetApplication?.activate()
-        accessibilityService.activate(target)
+        DispatchQueue.main.async {
+            targetApplication?.activate()
+            self.accessibilityService.activate(selectedTarget)
+        }
     }
 
     private func exitHintMode() {
@@ -119,5 +123,11 @@ final class HintCoordinator {
         query = ""
         targets = []
         targetApplication?.activate()
+    }
+
+    private func displayTargets(from targets: [HintTarget]) -> [DisplayHintTarget] {
+        targets.map { target in
+            DisplayHintTarget(label: target.label, frame: target.frame)
+        }
     }
 }
