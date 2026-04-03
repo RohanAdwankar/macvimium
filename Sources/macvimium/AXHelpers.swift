@@ -39,4 +39,27 @@ enum AXHelpers {
         var size = CGSize.zero
         return AXValueGetValue(axValue, .cgSize, &size) ? size : nil
     }
+
+    static func element(from value: CFTypeRef) -> AXUIElement? {
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+
+        return (value as! AXUIElement)
+    }
+
+    static func elements(from value: CFTypeRef) -> [AXUIElement] {
+        if let element = element(from: value) {
+            return [element]
+        }
+
+        guard let array = value as? [Any] else {
+            return []
+        }
+
+        return array.compactMap { item in
+            let cfValue = item as CFTypeRef
+            return element(from: cfValue)
+        }
+    }
 }

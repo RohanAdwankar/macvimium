@@ -156,25 +156,7 @@ final class AccessibilityService {
     }
 
     private func extractElements(from value: CFTypeRef) -> [AXUIElement] {
-        if CFGetTypeID(value) == AXUIElementGetTypeID() {
-            return [unsafeDowncast(value, to: AXUIElement.self)]
-        }
-
-        if let elements = value as? [AXUIElement] {
-            return elements
-        }
-
-        if let array = value as? [Any] {
-            return array.compactMap { item in
-                let cfValue = item as CFTypeRef
-                guard CFGetTypeID(cfValue) == AXUIElementGetTypeID() else {
-                    return nil
-                }
-                return unsafeDowncast(cfValue, to: AXUIElement.self)
-            }
-        }
-
-        return []
+        AXHelpers.elements(from: value)
     }
 
     private func isInsideConstraint(_ frame: CGRect, frameConstraint: CGRect?) -> Bool {
