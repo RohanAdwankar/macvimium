@@ -34,7 +34,7 @@ final class HintOverlayView: NSView {
         didSet { needsDisplay = true }
     }
 
-    override var isFlipped: Bool { false }
+    override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
@@ -50,9 +50,11 @@ final class HintOverlayView: NSView {
         }
 
         let width: CGFloat = max(28, CGFloat(target.label.count) * 11 + 10)
+        let x = min(max(target.frame.minX - screenFrame.minX, 0), max(bounds.width - width, 0))
+        let y = min(max(target.frame.minY - screenFrame.minY - 20, 0), max(bounds.height - 18, 0))
         let rect = CGRect(
-            x: target.frame.minX - screenFrame.minX,
-            y: target.frame.maxY - screenFrame.minY - 20,
+            x: x,
+            y: y,
             width: width,
             height: 18
         )
