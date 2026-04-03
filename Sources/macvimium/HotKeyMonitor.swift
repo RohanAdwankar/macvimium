@@ -33,11 +33,12 @@ final class HotKeyMonitor {
             }
 
             let monitor = Unmanaged<HotKeyMonitor>.fromOpaque(userData).takeUnretainedValue()
+            print("macvimium: hotkey pressed")
             monitor.handler()
             return noErr
         }
 
-        InstallEventHandler(
+        let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
             callback,
             1,
@@ -45,9 +46,12 @@ final class HotKeyMonitor {
             UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
             &eventHandler
         )
+        if installStatus != noErr {
+            print("macvimium: failed to install hotkey handler (\(installStatus))")
+        }
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x4D56494D), id: 1)
-        RegisterEventHotKey(
+        let registerStatus = RegisterEventHotKey(
             UInt32(kVK_ANSI_Semicolon),
             UInt32(controlKey + optionKey),
             hotKeyID,
@@ -55,5 +59,10 @@ final class HotKeyMonitor {
             0,
             &hotKeyRef
         )
+        if registerStatus == noErr {
+            print("macvimium: registered hotkey Control+Option+;")
+        } else {
+            print("macvimium: failed to register hotkey (\(registerStatus))")
+        }
     }
 }

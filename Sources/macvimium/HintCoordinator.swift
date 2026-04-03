@@ -19,20 +19,24 @@ final class HintCoordinator {
 
     func enterHintMode() {
         guard accessibilityService.requestTrustIfNeeded() else {
+            print("macvimium: accessibility permission not granted")
             return
         }
 
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
               frontmostApp.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
+            print("macvimium: no eligible frontmost app")
             return
         }
 
         let targets = accessibilityService.hintTargets(for: frontmostApp)
         guard !targets.isEmpty else {
+            print("macvimium: no hint targets found for \(frontmostApp.localizedName ?? "unknown app")")
             NSSound.beep()
             return
         }
 
+        print("macvimium: showing \(targets.count) hints for \(frontmostApp.localizedName ?? "unknown app")")
         self.targets = targets
         self.targetApplication = frontmostApp
         query = ""
@@ -99,6 +103,7 @@ final class HintCoordinator {
     }
 
     private func activate(_ target: HintTarget) {
+        print("macvimium: activating hint \(target.label)")
         overlayController.hide()
         uninstallKeyMonitor()
         query = ""
@@ -108,6 +113,7 @@ final class HintCoordinator {
     }
 
     private func exitHintMode() {
+        print("macvimium: exiting hint mode")
         overlayController.hide()
         uninstallKeyMonitor()
         query = ""
