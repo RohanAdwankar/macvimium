@@ -8,7 +8,7 @@ Minimal system-wide Vimium-style navigation for macOS.
 - Press `Control` + `Option` + `;` to enter hint mode.
 - Scans the frontmost app's accessibility tree for pressable elements.
 - Draws short keyboard hints near those elements.
-- Type the hint to activate the element.
+- Type the full hint label shown on screen to activate the element.
 - Press `Escape` to cancel.
 
 ## Requirements

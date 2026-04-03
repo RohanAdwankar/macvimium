@@ -17,8 +17,9 @@ final class AccessibilityService {
 
     func hintTargets(for application: NSRunningApplication) -> [HintTarget] {
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
-        let rootElement = focusedWindow(for: appElement) ?? appElement
-        let elements = actionableElements(startingAt: rootElement)
+        let focusedWindow = focusedWindow(for: appElement)
+        let windowFrame = focusedWindow.flatMap(frame(for:))
+        let elements = actionableElements(startingAt: appElement, constrainedTo: windowFrame)
         let labels = HintLabelGenerator.labels(count: elements.count)
 
         return zip(labels, elements).compactMap { label, element in
@@ -31,17 +32,22 @@ final class AccessibilityService {
     }
 
     func activate(_ target: HintTarget) {
-        AXUIElementPerformAction(target.element, kAXPressAction as CFString)
+        for action in preferredActions(for: target.element) {
+            if AXUIElementPerformAction(target.element, action as CFString) == .success {
+                return
+            }
+        }
     }
 
     private func focusedWindow(for appElement: AXUIElement) -> AXUIElement? {
         AXHelpers.value(appElement, attribute: kAXFocusedWindowAttribute) as AXUIElement?
     }
 
-    private func actionableElements(startingAt root: AXUIElement) -> [AXUIElement] {
+    private func actionableElements(startingAt root: AXUIElement, constrainedTo frameConstraint: CGRect?) -> [AXUIElement] {
         var queue = [root]
         var actionable: [AXUIElement] = []
         var visited = Set<CFHashCode>()
+        var seenFrames = Set<String>()
 
         while let element = queue.popLast() {
             let identifier = CFHash(element)
@@ -50,13 +56,17 @@ final class AccessibilityService {
             }
             visited.insert(identifier)
 
-            if isActionable(element) {
-                actionable.append(element)
+            if let frame = frame(for: element),
+               isInsideConstraint(frame, frameConstraint: frameConstraint),
+               isActionable(element) {
+                let key = dedupeKey(for: frame)
+                if !seenFrames.contains(key) {
+                    seenFrames.insert(key)
+                    actionable.append(element)
+                }
             }
 
-            if let children: [AXUIElement] = AXHelpers.value(element, attribute: kAXChildrenAttribute) {
-                queue.append(contentsOf: children)
-            }
+            queue.append(contentsOf: relatedElements(for: element))
         }
 
         return actionable.sorted { lhs, rhs in
@@ -70,8 +80,11 @@ final class AccessibilityService {
     }
 
     private func isActionable(_ element: AXUIElement) -> Bool {
-        if let actions: [String] = AXHelpers.value(element, attribute: "AXActions"),
-           actions.contains(kAXPressAction) {
+        let actions = supportedActions(for: element)
+        if actions.contains(kAXPressAction as String) ||
+            actions.contains("AXConfirm") ||
+            actions.contains("AXPick") ||
+            actions.contains("AXShowMenu") {
             return true
         }
 
@@ -85,7 +98,99 @@ final class AccessibilityService {
             kAXMenuItemRole as String,
             kAXCheckBoxRole as String,
             kAXRadioButtonRole as String,
+            "AXToolbarButton",
+            "AXPopUpButton",
+            "AXMenuButton",
+            "AXDisclosureTriangle",
+            "AXIncrementor",
+            "AXValueIndicator",
+            "AXTab",
         ].contains(role)
+    }
+
+    private func supportedActions(for element: AXUIElement) -> [String] {
+        AXHelpers.value(element, attribute: "AXActions") ?? []
+    }
+
+    private func preferredActions(for element: AXUIElement) -> [String] {
+        let supported = Set(supportedActions(for: element))
+        return [
+            kAXPressAction as String,
+            "AXConfirm",
+            "AXPick",
+            "AXShowMenu",
+        ].filter { supported.contains($0) }
+    }
+
+    private func relatedElements(for element: AXUIElement) -> [AXUIElement] {
+        let attributeNames = copyAttributeNames(for: element)
+        var results: [AXUIElement] = []
+
+        for attributeName in attributeNames {
+            guard let rawValue = copyAttributeValue(for: element, attribute: attributeName) else {
+                continue
+            }
+
+            results.append(contentsOf: extractElements(from: rawValue))
+        }
+
+        return results
+    }
+
+    private func copyAttributeNames(for element: AXUIElement) -> [String] {
+        var namesRef: CFArray?
+        guard AXUIElementCopyAttributeNames(element, &namesRef) == .success,
+              let names = namesRef as? [String] else {
+            return []
+        }
+
+        return names
+    }
+
+    private func copyAttributeValue(for element: AXUIElement, attribute: String) -> CFTypeRef? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
+            return nil
+        }
+        return value
+    }
+
+    private func extractElements(from value: CFTypeRef) -> [AXUIElement] {
+        if CFGetTypeID(value) == AXUIElementGetTypeID() {
+            return [unsafeDowncast(value, to: AXUIElement.self)]
+        }
+
+        if let elements = value as? [AXUIElement] {
+            return elements
+        }
+
+        if let array = value as? [Any] {
+            return array.compactMap { item in
+                let cfValue = item as CFTypeRef
+                guard CFGetTypeID(cfValue) == AXUIElementGetTypeID() else {
+                    return nil
+                }
+                return unsafeDowncast(cfValue, to: AXUIElement.self)
+            }
+        }
+
+        return []
+    }
+
+    private func isInsideConstraint(_ frame: CGRect, frameConstraint: CGRect?) -> Bool {
+        guard let frameConstraint else {
+            return true
+        }
+
+        return frame.intersects(frameConstraint.insetBy(dx: -24, dy: -24))
+    }
+
+    private func dedupeKey(for frame: CGRect) -> String {
+        let x = Int(frame.origin.x.rounded())
+        let y = Int(frame.origin.y.rounded())
+        let width = Int(frame.width.rounded())
+        let height = Int(frame.height.rounded())
+        return "\(x):\(y):\(width):\(height)"
     }
 
     private func frame(for element: AXUIElement) -> CGRect? {
