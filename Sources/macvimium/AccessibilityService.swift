@@ -138,7 +138,13 @@ final class AccessibilityService {
     }
 
     private func supportedActions(for element: AXUIElement) -> [String] {
-        AXHelpers.value(element, attribute: "AXActions") ?? []
+        var actionNames: CFArray?
+        guard AXUIElementCopyActionNames(element, &actionNames) == .success,
+              let actionNames = actionNames as? [String] else {
+            return []
+        }
+
+        return actionNames
     }
 
     private func preferredActions(for element: AXUIElement) -> [String] {

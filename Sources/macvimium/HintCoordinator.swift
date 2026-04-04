@@ -7,10 +7,12 @@ final class HintCoordinator {
     private let overlayController = HintOverlayController()
     private let calculatorBundleIdentifier = "com.apple.calculator"
     private var hotKeyMonitor: HotKeyMonitor?
-    private var localKeyMonitor: Any?
     private var targets: [HintTarget] = []
     private var query = ""
     private var targetApplication: NSRunningApplication?
+    private lazy var inputInterceptor = HintInputInterceptor { [weak self] input in
+        self?.handle(input: input)
+    }
 
     init() {
         hotKeyMonitor = HotKeyMonitor { [weak self] in
@@ -74,9 +76,8 @@ final class HintCoordinator {
         self.targets = targets
         self.targetApplication = frontmostApp
         query = ""
-        NSApp.activate(ignoringOtherApps: true)
         overlayController.show(targets: displayTargets(from: targets), query: query)
-        installKeyMonitor()
+        inputInterceptor.start()
     }
 
     private func activateCalculatorSafeTarget() {
@@ -90,40 +91,26 @@ final class HintCoordinator {
         }
     }
 
-    private func installKeyMonitor() {
-        uninstallKeyMonitor()
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
-            return self.handle(event: event) ? nil : event
-        }
-    }
-
-    private func uninstallKeyMonitor() {
-        if let localKeyMonitor {
-            NSEvent.removeMonitor(localKeyMonitor)
-            self.localKeyMonitor = nil
-        }
-    }
-
-    private func handle(event: NSEvent) -> Bool {
-        switch event.keyCode {
+    private func handle(input: HintKeyInput) {
+        switch input.keyCode {
         case UInt16(kVK_Escape):
             exitHintMode()
-            return true
+            return
         case UInt16(kVK_Delete), UInt16(kVK_ForwardDelete):
-            guard !query.isEmpty else { return true }
+            guard !query.isEmpty else { return }
             query.removeLast()
             refresh()
-            return true
+            return
         default:
             break
         }
 
-        guard let characters = event.charactersIgnoringModifiers?.uppercased(),
+        let characters = input.characters.uppercased()
+        guard
               characters.count == 1,
               let character = characters.first,
               character.isLetter else {
-            return true
+            return
         }
 
         query.append(character)
@@ -139,8 +126,6 @@ final class HintCoordinator {
         default:
             refresh()
         }
-
-        return true
     }
 
     private func refresh() {
@@ -156,9 +141,9 @@ final class HintCoordinator {
         self.targetApplication = nil
         DispatchQueue.main.async {
             self.overlayController.hide()
-            self.uninstallKeyMonitor()
+            self.inputInterceptor.stop()
             if let targetApplication {
-                targetApplication.activate(options: [.activateIgnoringOtherApps])
+                targetApplication.activate()
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -176,8 +161,8 @@ final class HintCoordinator {
         self.targetApplication = nil
         DispatchQueue.main.async {
             self.overlayController.hide()
-            self.uninstallKeyMonitor()
-            targetApplication?.activate(options: [.activateIgnoringOtherApps])
+            self.inputInterceptor.stop()
+            targetApplication?.activate()
         }
     }
 
