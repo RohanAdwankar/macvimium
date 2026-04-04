@@ -5,22 +5,41 @@ final class HintOverlayController {
     private var windows: [HintOverlayWindow] = []
 
     func show(targets: [DisplayHintTarget], query: String) {
-        hide()
+        let screens = NSScreen.screens
+        ensureWindows(for: screens)
 
-        for screen in NSScreen.screens {
-            let window = HintOverlayWindow(screen: screen)
-            let view = HintOverlayView(frame: CGRect(origin: .zero, size: screen.frame.size))
+        for (window, screen) in zip(windows, screens) {
+            let view: HintOverlayView
+            if let existingView = window.contentView as? HintOverlayView {
+                view = existingView
+                view.frame = CGRect(origin: .zero, size: screen.frame.size)
+            } else {
+                view = HintOverlayView(frame: CGRect(origin: .zero, size: screen.frame.size))
+                window.contentView = view
+            }
+
+            window.setFrame(screen.frame, display: false)
             view.targets = targets.filter { $0.frame.intersects(screen.frame) }
             view.query = query
-            window.contentView = view
             window.orderFrontRegardless()
-            windows.append(window)
         }
     }
 
     func hide() {
-        windows.forEach { $0.close() }
-        windows.removeAll()
+        windows.forEach { window in
+            (window.contentView as? HintOverlayView)?.targets = []
+            window.orderOut(nil)
+        }
+    }
+
+    private func ensureWindows(for screens: [NSScreen]) {
+        guard windows.count < screens.count else {
+            return
+        }
+
+        for screen in screens.dropFirst(windows.count) {
+            windows.append(HintOverlayWindow(screen: screen))
+        }
     }
 }
 

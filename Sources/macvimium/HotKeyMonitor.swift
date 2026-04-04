@@ -34,7 +34,9 @@ final class HotKeyMonitor {
 
             let monitor = Unmanaged<HotKeyMonitor>.fromOpaque(userData).takeUnretainedValue()
             print("macvimium: hotkey pressed")
-            monitor.handler()
+            DispatchQueue.main.async {
+                monitor.handler()
+            }
             return noErr
         }
 

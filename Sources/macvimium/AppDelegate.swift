@@ -11,6 +11,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusController = StatusController(
             onShowHints: { [weak self] in
                 self?.hintCoordinator?.enterHintMode()
+            },
+            onRunSelfTest: { [weak self] in
+                self?.hintCoordinator?.runCalculatorSelfTest()
             }
         )
     }

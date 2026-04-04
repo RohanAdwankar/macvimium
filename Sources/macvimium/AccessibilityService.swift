@@ -5,12 +5,29 @@ import CoreGraphics
 struct HintTarget {
     let label: String
     let frame: CGRect
-    let element: AXUIElement
+    let elementHandle: AXElementHandle
+    let description: String
 }
 
 struct DisplayHintTarget {
     let label: String
     let frame: CGRect
+}
+
+final class AXElementHandle {
+    private let storage: AXUIElement
+
+    init(_ element: AXUIElement) {
+        storage = Unmanaged.passRetained(element).takeUnretainedValue()
+    }
+
+    deinit {
+        Unmanaged.passUnretained(storage).release()
+    }
+
+    var element: AXUIElement {
+        storage
+    }
 }
 
 @MainActor
@@ -32,13 +49,18 @@ final class AccessibilityService {
                 return nil
             }
 
-            return HintTarget(label: label, frame: frame, element: element)
+            return HintTarget(
+                label: label,
+                frame: frame,
+                elementHandle: AXElementHandle(element),
+                description: elementDescription(for: element)
+            )
         }
     }
 
     func activate(_ target: HintTarget) {
-        for action in preferredActions(for: target.element) {
-            if AXUIElementPerformAction(target.element, action as CFString) == .success {
+        for action in preferredActions(for: target.elementHandle.element) {
+            if AXUIElementPerformAction(target.elementHandle.element, action as CFString) == .success {
                 return
             }
         }
@@ -178,6 +200,19 @@ final class AccessibilityService {
         let width = Int(frame.width.rounded())
         let height = Int(frame.height.rounded())
         return "\(x):\(y):\(width):\(height)"
+    }
+
+    private func elementDescription(for element: AXUIElement) -> String {
+        let role = (AXHelpers.value(element, attribute: kAXRoleAttribute) as String?) ?? "unknown-role"
+        let title = (AXHelpers.value(element, attribute: kAXTitleAttribute) as String?) ?? ""
+        let description = (AXHelpers.value(element, attribute: kAXDescriptionAttribute) as String?) ?? ""
+        let value = (AXHelpers.value(element, attribute: kAXValueAttribute) as String?) ?? ""
+
+        let text = [title, description, value]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? "untitled"
+
+        return "\(role): \(text)"
     }
 
     private func frame(for element: AXUIElement) -> CGRect? {
