@@ -6,6 +6,8 @@ struct HintTarget {
     let label: String
     let frame: CGRect
     let elementHandle: AXElementHandle
+    let role: String
+    let bundleIdentifier: String?
     let description: String
 }
 
@@ -41,11 +43,19 @@ final class AccessibilityService {
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
         let focusedWindow = focusedWindow(for: appElement)
         let windowFrame = focusedWindow.flatMap(frame(for:))
-        let elements = actionableElements(startingAt: appElement, constrainedTo: windowFrame)
+        let elements = filteredElements(
+            from: actionableElements(startingAt: appElement, constrainedTo: windowFrame),
+            constrainedTo: windowFrame
+        )
         let labels = HintLabelGenerator.labels(count: elements.count)
 
         return zip(labels, elements).compactMap { label, element in
-            guard let frame = frame(for: element), frame.width > 0, frame.height > 0 else {
+            guard
+                let frame = frame(for: element),
+                frame.width > 0,
+                frame.height > 0,
+                let role = role(for: element)
+            else {
                 return nil
             }
 
@@ -53,19 +63,27 @@ final class AccessibilityService {
                 label: label,
                 frame: frame,
                 elementHandle: AXElementHandle(element),
+                role: role,
+                bundleIdentifier: application.bundleIdentifier,
                 description: elementDescription(for: element)
             )
         }
     }
 
     func activate(_ target: HintTarget) -> Bool {
+        var didActivate = false
         for action in preferredActions(for: target.elementHandle.element) {
             if AXUIElementPerformAction(target.elementHandle.element, action as CFString) == .success {
-                return true
+                didActivate = true
+                break
             }
         }
 
-        return false
+        if shouldUseMouseFallback(for: target) {
+            return syntheticClick(at: target.frame.center)
+        }
+
+        return didActivate
     }
 
     private func focusedWindow(for appElement: AXUIElement) -> AXUIElement? {
@@ -109,16 +127,16 @@ final class AccessibilityService {
     }
 
     private func isActionable(_ element: AXUIElement) -> Bool {
+        guard let role = role(for: element), !ignoredRoles.contains(role) else {
+            return false
+        }
+
         let actions = supportedActions(for: element)
         if actions.contains(kAXPressAction as String) ||
             actions.contains("AXConfirm") ||
             actions.contains("AXPick") ||
             actions.contains("AXShowMenu") {
             return true
-        }
-
-        guard let role: String = AXHelpers.value(element, attribute: kAXRoleAttribute) else {
-            return false
         }
 
         return [
@@ -135,6 +153,17 @@ final class AccessibilityService {
             "AXValueIndicator",
             "AXTab",
         ].contains(role)
+    }
+
+    private var ignoredRoles: Set<String> {
+        [
+            "AXToolbar",
+            "AXGroup",
+            "AXLayoutArea",
+            "AXScrollArea",
+            "AXSplitGroup",
+            "AXBrowser",
+        ]
     }
 
     private func supportedActions(for element: AXUIElement) -> [String] {
@@ -155,6 +184,128 @@ final class AccessibilityService {
             "AXPick",
             "AXShowMenu",
         ].filter { supported.contains($0) }
+    }
+
+    private func filteredElements(from elements: [AXUIElement], constrainedTo frameConstraint: CGRect?) -> [AXUIElement] {
+        let candidates = elements.compactMap { element -> Candidate? in
+            guard
+                let frame = frame(for: element),
+                let role = role(for: element),
+                isInsideConstraint(frame, frameConstraint: frameConstraint),
+                frame.width >= 8,
+                frame.height >= 8
+            else {
+                return nil
+            }
+
+            return Candidate(
+                element: element,
+                frame: frame,
+                role: role,
+                description: elementDescription(for: element)
+            )
+        }
+
+        let sorted = candidates.sorted { lhs, rhs in
+            let lhsScore = candidateScore(lhs)
+            let rhsScore = candidateScore(rhs)
+            if lhsScore == rhsScore {
+                return lhs.frame.area < rhs.frame.area
+            }
+            return lhsScore > rhsScore
+        }
+
+        var chosen: [Candidate] = []
+
+        for candidate in sorted {
+            if chosen.contains(where: { overlapsStrongly(candidate.frame, $0.frame) }) {
+                continue
+            }
+
+            chosen.append(candidate)
+        }
+
+        return chosen
+            .map(\.element)
+            .sorted { lhs, rhs in
+                let lhsOrigin = frame(for: lhs)?.origin ?? .zero
+                let rhsOrigin = frame(for: rhs)?.origin ?? .zero
+                if lhsOrigin.y == rhsOrigin.y {
+                    return lhsOrigin.x < rhsOrigin.x
+                }
+                return lhsOrigin.y > rhsOrigin.y
+            }
+    }
+
+    private func candidateScore(_ candidate: Candidate) -> Int {
+        var score = 0
+        if candidate.role == kAXButtonRole as String || candidate.role == "AXLink" {
+            score += 5
+        }
+        if !candidate.description.contains("untitled") {
+            score += 3
+        }
+        if candidate.frame.area < 40_000 {
+            score += 2
+        }
+        if candidate.frame.area > 200_000 {
+            score -= 4
+        }
+        return score
+    }
+
+    private func overlapsStrongly(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull, intersection.width > 0, intersection.height > 0 else {
+            return false
+        }
+
+        let overlapArea = intersection.width * intersection.height
+        let smallerArea = min(lhs.area, rhs.area)
+        guard smallerArea > 0 else {
+            return false
+        }
+
+        if overlapArea / smallerArea > 0.7 {
+            return true
+        }
+
+        return lhs.center.distance(to: rhs.center) < 12
+    }
+
+    private func shouldUseMouseFallback(for target: HintTarget) -> Bool {
+        let buttonLikeRoles: Set<String> = [
+            kAXButtonRole as String,
+            "AXLink",
+            kAXCheckBoxRole as String,
+            kAXRadioButtonRole as String,
+            "AXMenuButton",
+            "AXPopUpButton",
+            "AXToolbarButton",
+            "AXTab",
+        ]
+
+        if target.bundleIdentifier == "com.docker.docker" {
+            return true
+        }
+
+        return buttonLikeRoles.contains(target.role)
+    }
+
+    private func syntheticClick(at point: CGPoint) -> Bool {
+        guard
+            let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left),
+            let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left),
+            let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left)
+        else {
+            return false
+        }
+
+        move.post(tap: .cghidEventTap)
+        down.post(tap: .cghidEventTap)
+        usleep(12_000)
+        up.post(tap: .cghidEventTap)
+        return true
     }
 
     private func relatedElements(for element: AXUIElement) -> [AXUIElement] {
@@ -211,7 +362,7 @@ final class AccessibilityService {
     }
 
     private func elementDescription(for element: AXUIElement) -> String {
-        let role = (AXHelpers.value(element, attribute: kAXRoleAttribute) as String?) ?? "unknown-role"
+        let role = role(for: element) ?? "unknown-role"
         let title = (AXHelpers.value(element, attribute: kAXTitleAttribute) as String?) ?? ""
         let description = (AXHelpers.value(element, attribute: kAXDescriptionAttribute) as String?) ?? ""
         let value = (AXHelpers.value(element, attribute: kAXValueAttribute) as String?) ?? ""
@@ -221,6 +372,10 @@ final class AccessibilityService {
             .first(where: { !$0.isEmpty }) ?? "untitled"
 
         return "\(role): \(text)"
+    }
+
+    private func role(for element: AXUIElement) -> String? {
+        AXHelpers.value(element, attribute: kAXRoleAttribute) as String?
     }
 
     private func frame(for element: AXUIElement) -> CGRect? {
@@ -236,5 +391,28 @@ final class AccessibilityService {
         }
 
         return CGRect(origin: origin, size: size)
+    }
+}
+
+private struct Candidate {
+    let element: AXUIElement
+    let frame: CGRect
+    let role: String
+    let description: String
+}
+
+private extension CGRect {
+    var area: CGFloat {
+        width * height
+    }
+
+    var center: CGPoint {
+        CGPoint(x: midX, y: midY)
+    }
+}
+
+private extension CGPoint {
+    func distance(to other: CGPoint) -> CGFloat {
+        hypot(x - other.x, y - other.y)
     }
 }
