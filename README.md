@@ -1,6 +1,17 @@
 # macvimium
 
-Minimal system-wide Vimium-style navigation for macOS.
+https://github.com/user-attachments/assets/23980e1f-2a32-4e9f-add1-776e7e3c1914
+
+Vimium-style navigation for macOS.
+
+## Quick Start
+
+```bash
+git clone https://github.com/RohanAdwankar/macvimium
+cd macvimium
+swift build
+swift run
+```
 
 ## What it does
 
@@ -19,12 +30,3 @@ Minimal system-wide Vimium-style navigation for macOS.
 The first time hint mode is triggered, macOS should prompt for Accessibility access. If it does not, add the built binary manually in:
 
 `System Settings -> Privacy & Security -> Accessibility`
-
-## Development
-
-```bash
-swift build
-swift run
-```
-
-This project uses Swift Package Manager and currently builds with the macOS Command Line Tools, so full Xcode is not required.
