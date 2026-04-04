@@ -10,7 +10,7 @@ final class HintCoordinator {
     private var localKeyMonitor: Any?
     private var targets: [HintTarget] = []
     private var query = ""
-    private weak var targetApplication: NSRunningApplication?
+    private var targetApplication: NSRunningApplication?
 
     init() {
         hotKeyMonitor = HotKeyMonitor { [weak self] in
@@ -153,11 +153,18 @@ final class HintCoordinator {
         let selectedTarget = target
         query = ""
         targets = []
+        self.targetApplication = nil
         DispatchQueue.main.async {
             self.overlayController.hide()
             self.uninstallKeyMonitor()
-            targetApplication?.activate()
-            self.accessibilityService.activate(selectedTarget)
+            if let targetApplication {
+                targetApplication.activate(options: [.activateIgnoringOtherApps])
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                let didActivate = self.accessibilityService.activate(selectedTarget)
+                print("macvimium: AX action \(didActivate ? "succeeded" : "failed") for \(selectedTarget.label)")
+            }
         }
     }
 
@@ -166,10 +173,11 @@ final class HintCoordinator {
         query = ""
         targets = []
         let targetApplication = self.targetApplication
+        self.targetApplication = nil
         DispatchQueue.main.async {
             self.overlayController.hide()
             self.uninstallKeyMonitor()
-            targetApplication?.activate()
+            targetApplication?.activate(options: [.activateIgnoringOtherApps])
         }
     }
 

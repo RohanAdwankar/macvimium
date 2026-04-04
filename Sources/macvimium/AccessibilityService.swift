@@ -58,12 +58,14 @@ final class AccessibilityService {
         }
     }
 
-    func activate(_ target: HintTarget) {
+    func activate(_ target: HintTarget) -> Bool {
         for action in preferredActions(for: target.elementHandle.element) {
             if AXUIElementPerformAction(target.elementHandle.element, action as CFString) == .success {
-                return
+                return true
             }
         }
+
+        return false
     }
 
     private func focusedWindow(for appElement: AXUIElement) -> AXUIElement? {
