@@ -5,7 +5,7 @@ Minimal system-wide Vimium-style navigation for macOS.
 ## What it does
 
 - Runs as a menu bar app.
-- Press `Control` + `Option` + `;` to enter hint mode.
+- Press `Option` + `Command` + `F` to enter hint mode.
 - Scans the frontmost app's accessibility tree for pressable elements.
 - Draws short keyboard hints near those elements.
 - Type the full hint label shown on screen to activate the element.

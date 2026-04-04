@@ -5,7 +5,6 @@ import Carbon
 final class HintCoordinator {
     private let accessibilityService = AccessibilityService()
     private let overlayController = HintOverlayController()
-    private let calculatorBundleIdentifier = "com.apple.calculator"
     private var hotKeyMonitor: HotKeyMonitor?
     private var targets: [HintTarget] = []
     private var query = ""
@@ -22,73 +21,29 @@ final class HintCoordinator {
 
     func enterHintMode() {
         guard accessibilityService.requestTrustIfNeeded() else {
-            print("macvimium: accessibility permission not granted")
             return
         }
 
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
               frontmostApp.processIdentifier != ProcessInfo.processInfo.processIdentifier else {
-            print("macvimium: no eligible frontmost app")
             return
         }
 
         enterHintMode(for: frontmostApp)
     }
 
-    func runCalculatorSelfTest() {
-        guard accessibilityService.requestTrustIfNeeded() else {
-            print("macvimium: accessibility permission not granted")
-            return
-        }
-
-        let launched = NSWorkspace.shared.launchApplication(withBundleIdentifier: calculatorBundleIdentifier, options: [.default], additionalEventParamDescriptor: nil, launchIdentifier: nil)
-        guard launched else {
-            print("macvimium: failed to open Calculator")
-            return
-        }
-
-        print("macvimium: running Calculator self-test")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let self else { return }
-            guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: self.calculatorBundleIdentifier).first else {
-                print("macvimium: Calculator did not return a running application")
-                return
-            }
-
-            app.activate()
-            self.enterHintMode(for: app)
-            self.activateCalculatorSafeTarget()
-        }
-    }
-
     private func enterHintMode(for frontmostApp: NSRunningApplication) {
         let targets = accessibilityService.hintTargets(for: frontmostApp)
         guard !targets.isEmpty else {
-            print("macvimium: no hint targets found for \(frontmostApp.localizedName ?? "unknown app")")
             NSSound.beep()
             return
         }
 
-        print("macvimium: showing \(targets.count) hints for \(frontmostApp.localizedName ?? "unknown app")")
-        for target in targets {
-            print("macvimium: hint \(target.label) -> \(target.description)")
-        }
         self.targets = targets
         self.targetApplication = frontmostApp
         query = ""
         overlayController.show(targets: displayTargets(from: targets), query: query)
         inputInterceptor.start()
-    }
-
-    private func activateCalculatorSafeTarget() {
-        guard let target = targets.first(where: { $0.description.contains("All Clear") }) else {
-            print("macvimium: Calculator self-test could not find All Clear")
-            return
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.activate(target)
-        }
     }
 
     private func handle(input: HintKeyInput) {
@@ -133,7 +88,6 @@ final class HintCoordinator {
     }
 
     private func activate(_ target: HintTarget) {
-        print("macvimium: activating hint \(target.label)")
         let targetApplication = self.targetApplication
         let selectedTarget = target
         query = ""
@@ -147,14 +101,12 @@ final class HintCoordinator {
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                let didActivate = self.accessibilityService.activate(selectedTarget)
-                print("macvimium: AX action \(didActivate ? "succeeded" : "failed") for \(selectedTarget.label)")
+                _ = self.accessibilityService.activate(selectedTarget)
             }
         }
     }
 
     private func exitHintMode() {
-        print("macvimium: exiting hint mode")
         query = ""
         targets = []
         let targetApplication = self.targetApplication

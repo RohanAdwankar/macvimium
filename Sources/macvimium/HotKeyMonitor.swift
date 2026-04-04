@@ -33,7 +33,6 @@ final class HotKeyMonitor {
             }
 
             let monitor = Unmanaged<HotKeyMonitor>.fromOpaque(userData).takeUnretainedValue()
-            print("macvimium: hotkey pressed")
             DispatchQueue.main.async {
                 monitor.handler()
             }
@@ -54,16 +53,14 @@ final class HotKeyMonitor {
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x4D56494D), id: 1)
         let registerStatus = RegisterEventHotKey(
-            UInt32(kVK_ANSI_Semicolon),
-            UInt32(controlKey + optionKey),
+            UInt32(kVK_ANSI_F),
+            UInt32(cmdKey + optionKey),
             hotKeyID,
             GetApplicationEventTarget(),
             0,
             &hotKeyRef
         )
-        if registerStatus == noErr {
-            print("macvimium: registered hotkey Control+Option+;")
-        } else {
+        if registerStatus != noErr {
             print("macvimium: failed to register hotkey (\(registerStatus))")
         }
     }
