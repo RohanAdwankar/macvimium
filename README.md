@@ -1,6 +1,6 @@
 # macvimium
 
-https://github.com/user-attachments/assets/23980e1f-2a32-4e9f-add1-776e7e3c1914
+https://github.com/user-attachments/assets/18adc492-e98b-4232-9c93-fc3cede7f867
 
 Vimium-style navigation for macOS.
 
