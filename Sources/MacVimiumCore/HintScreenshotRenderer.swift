@@ -48,7 +48,11 @@ public enum HintScreenshotRenderer {
         let width: CGFloat = max(28, CGFloat(target.label.count) * 11 + 10)
         let height: CGFloat = 18
         let x = min(max(target.frame.minX - captureRect.minX, 0), max(imageSize.width - width, 0))
-        let y = min(max(target.frame.minY - captureRect.minY - 20, 0), max(imageSize.height - height, 0))
+        let flippedY = min(
+            max(target.frame.minY - captureRect.minY - 20, 0),
+            max(imageSize.height - height, 0)
+        )
+        let y = max(imageSize.height - flippedY - height, 0)
         let rect = CGRect(x: x, y: y, width: width, height: height)
 
         NSColor.black.withAlphaComponent(0.9).setFill()
