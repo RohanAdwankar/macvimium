@@ -7,6 +7,16 @@ description: Use when an agent needs to inspect, click, or drag controls in macO
 
 Use `maclick` for deterministic macOS UI control from this repo.
 
+If `maclick` is not available yet:
+
+```bash
+git clone https://github.com/RohanAdwankar/macvimium
+cd macvimium
+swift build -c release
+mkdir -p ~/.local/bin
+ln -sf "$(pwd)/.build/release/maclick" ~/.local/bin/maclick
+```
+
 ## Commands
 
 Install path wrapper once:
