@@ -35,4 +35,6 @@ The first time hint mode is triggered, macOS should prompt for Accessibility acc
 
 https://github.com/user-attachments/assets/def68f44-91fd-4770-b425-4b869e1a9397
 
-A tool for AI Agent computer use using macvimium
+A tool for AI Agent computer use using macvimium.
+
+It is best documented in the [SKILL.md](https://github.com/RohanAdwankar/macvimium/blob/main/skills/maclick-automation/SKILL.md) which is what is used to enable computer use in Codex in the video above.
