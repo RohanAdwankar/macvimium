@@ -9,40 +9,40 @@ Use `maclick` for deterministic macOS UI control from this repo.
 
 ## Commands
 
-Build first if needed:
+Install path wrapper once:
 
 ```bash
-swift build
+maclick --help
 ```
 
 Open an app:
 
 ```bash
-./.build/debug/maclick open Chess.app
+maclick open Chess.app
 ```
 
 List actionable hints for a running app:
 
 ```bash
-./.build/debug/maclick Chess --help
+maclick Chess --help
 ```
 
 Recenter an off-screen window:
 
 ```bash
-./.build/debug/maclick Chess --recenter
+maclick Chess --recenter
 ```
 
 Click a hint:
 
 ```bash
-./.build/debug/maclick Calculator I
+maclick Calculator I
 ```
 
 Drag from one hint to another:
 
 ```bash
-./.build/debug/maclick Chess AN to SE
+maclick Chess AN to SE
 ```
 
 ## Workflow

@@ -12,6 +12,11 @@ enum MacClickCLI {
             exit(EXIT_FAILURE)
         }
 
+        if arguments.count == 1 && ["--help", "-h", "help"].contains(arguments[0].lowercased()) {
+            printUsage()
+            return
+        }
+
         switch arguments[0].lowercased() {
         case "open":
             openApplication(arguments.dropFirst())
