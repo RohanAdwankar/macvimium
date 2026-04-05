@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import MacVimiumCore
 
 @MainActor
 final class HintCoordinator {

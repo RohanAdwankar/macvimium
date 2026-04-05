@@ -1,4 +1,5 @@
 import AppKit
+import MacVimiumCore
 
 @MainActor
 final class HintOverlayController {

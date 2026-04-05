@@ -1,7 +1,7 @@
-enum HintLabelGenerator {
+public enum HintLabelGenerator {
     private static let alphabet = Array("ASDFGHJKLQWERTYUIOPZXCVBNM")
 
-    static func labels(count: Int) -> [String] {
+    public static func labels(count: Int) -> [String] {
         guard count > 0 else {
             return []
         }

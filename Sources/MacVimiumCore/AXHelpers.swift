@@ -40,6 +40,11 @@ enum AXHelpers {
         return AXValueGetValue(axValue, .cgSize, &size) ? size : nil
     }
 
+    static func axValue(point: CGPoint) -> AXValue? {
+        var point = point
+        return AXValueCreate(.cgPoint, &point)
+    }
+
     static func element(from value: CFTypeRef) -> AXUIElement? {
         guard CFGetTypeID(value) == AXUIElementGetTypeID() else {
             return nil

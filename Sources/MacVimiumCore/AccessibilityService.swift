@@ -2,24 +2,29 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 
-struct HintTarget {
-    let label: String
-    let frame: CGRect
-    let elementHandle: AXElementHandle
-    let role: String
-    let bundleIdentifier: String?
-    let description: String
+public struct HintTarget {
+    public let label: String
+    public let frame: CGRect
+    public let elementHandle: AXElementHandle
+    public let role: String
+    public let bundleIdentifier: String?
+    public let description: String
 }
 
-struct DisplayHintTarget {
-    let label: String
-    let frame: CGRect
+public struct DisplayHintTarget {
+    public let label: String
+    public let frame: CGRect
+
+    public init(label: String, frame: CGRect) {
+        self.label = label
+        self.frame = frame
+    }
 }
 
-final class AXElementHandle {
+public final class AXElementHandle {
     private let storage: AXUIElement
 
-    init(_ element: AXUIElement) {
+    public init(_ element: AXUIElement) {
         storage = Unmanaged.passRetained(element).takeUnretainedValue()
     }
 
@@ -27,19 +32,21 @@ final class AXElementHandle {
         Unmanaged.passUnretained(storage).release()
     }
 
-    var element: AXUIElement {
+    public var element: AXUIElement {
         storage
     }
 }
 
 @MainActor
-final class AccessibilityService {
-    func requestTrustIfNeeded() -> Bool {
+public final class AccessibilityService {
+    public init() {}
+
+    public func requestTrustIfNeeded() -> Bool {
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    func hintTargets(for application: NSRunningApplication) -> [HintTarget] {
+    public func hintTargets(for application: NSRunningApplication) -> [HintTarget] {
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
         let focusedWindow = focusedWindow(for: appElement)
         let windowFrame = focusedWindow.flatMap(frame(for:))
@@ -70,7 +77,7 @@ final class AccessibilityService {
         }
     }
 
-    func activate(_ target: HintTarget) -> Bool {
+    public func activate(_ target: HintTarget) -> Bool {
         var didActivate = false
         for action in preferredActions(for: target.elementHandle.element) {
             if AXUIElementPerformAction(target.elementHandle.element, action as CFString) == .success {
@@ -84,6 +91,18 @@ final class AccessibilityService {
         }
 
         return didActivate
+    }
+
+    public func moveFocusedWindow(of application: NSRunningApplication, to origin: CGPoint) -> Bool {
+        let appElement = AXUIElementCreateApplication(application.processIdentifier)
+        guard
+            let window = focusedWindow(for: appElement),
+            let value = AXHelpers.axValue(point: origin)
+        else {
+            return false
+        }
+
+        return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value) == .success
     }
 
     private func focusedWindow(for appElement: AXUIElement) -> AXUIElement? {
