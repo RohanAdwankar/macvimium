@@ -86,11 +86,15 @@ public final class AccessibilityService {
             }
         }
 
+        if didActivate {
+            return true
+        }
+
         if shouldUseMouseFallback(for: target) {
             return syntheticClick(at: target.frame.center)
         }
 
-        return didActivate
+        return false
     }
 
     public func moveFocusedWindow(of application: NSRunningApplication, to origin: CGPoint) -> Bool {

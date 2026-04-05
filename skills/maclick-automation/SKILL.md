@@ -27,6 +27,12 @@ List actionable hints for a running app:
 ./.build/debug/maclick Chess --help
 ```
 
+Recenter an off-screen window:
+
+```bash
+./.build/debug/maclick Chess --recenter
+```
+
 Click a hint:
 
 ```bash
@@ -43,12 +49,13 @@ Drag from one hint to another:
 
 1. Open the app with `maclick open ...` if it is not already running.
 2. Inspect with `maclick <app> --help` and read the semantic labels.
-3. Click with `maclick <app> <hint>`.
-4. Drag with `maclick <app> <from> to <to>`.
-5. When state matters, take a screenshot after actions:
+3. Recenter with `maclick <app> --recenter` if the window is off-screen or awkwardly placed.
+4. Click with `maclick <app> <hint>`.
+5. Drag with `maclick <app> <from> to <to>`.
+6. When state matters, take a screenshot after actions:
 
 ```bash
-screencapture /tmp/maclick-check.png
+screencapture -C /tmp/maclick-check.png
 ```
 
 ## Tips
@@ -56,5 +63,6 @@ screencapture /tmp/maclick-check.png
 - The `<app>` argument is usually the app name, for example `Chess`, `Calculator`, or `Terminal`.
 - Match hints exactly, but case does not matter.
 - Re-run `--help` after each meaningful UI change because hints may be reassigned.
-- For board games and canvases, prefer drag commands over repeated clicks.
+- For apps that expose real AX actions, `maclick` prefers semantic activation over raw mouse input. Chess works best through this path.
+- For generic canvases and custom controls, `maclick` falls back to real HID mouse movement and dragging.
 - If a control is visually present but hard to activate through Accessibility alone, `maclick` already falls back to a real HID mouse click for button-like targets.

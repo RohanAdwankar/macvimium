@@ -64,7 +64,7 @@ enum MacClickCLI {
         }
 
         if arguments.count == 4 && arguments[2].lowercased() == "to" {
-            drag(from: arguments[1], to: arguments[3], app: app, hints: hints)
+            drag(from: arguments[1], to: arguments[3], app: app, hints: hints, service: service)
             return
         }
 
@@ -80,12 +80,7 @@ enum MacClickCLI {
 
         app.activate()
         Thread.sleep(forTimeInterval: 0.08)
-        let didActivate: Bool
-        if app.bundleIdentifier == "com.apple.Chess" {
-            didActivate = PointerAutomation.click(at: interactionPoint(for: target))
-        } else {
-            didActivate = service.activate(target)
-        }
+        let didActivate = service.activate(target)
         if !didActivate {
             fputs("maclick: failed to activate \(target.label) (\(target.description))\n", stderr)
             exit(EXIT_FAILURE)
@@ -93,7 +88,13 @@ enum MacClickCLI {
         print("maclick: activated \(target.label) -> \(target.description)")
     }
 
-    private static func drag(from sourceLabel: String, to destinationLabel: String, app: NSRunningApplication, hints: [HintTarget]) {
+    private static func drag(
+        from sourceLabel: String,
+        to destinationLabel: String,
+        app: NSRunningApplication,
+        hints: [HintTarget],
+        service: AccessibilityService
+    ) {
         guard let source = hint(matching: sourceLabel, in: hints) else {
             fputs("maclick: unknown source hint '\(sourceLabel)'\n", stderr)
             exit(EXIT_FAILURE)
@@ -106,17 +107,11 @@ enum MacClickCLI {
         app.activate()
         Thread.sleep(forTimeInterval: 0.08)
         let didCompleteMove: Bool
-        if app.bundleIdentifier == "com.apple.Chess" && ProcessInfo.processInfo.environment["MACLICK_FORCE_DRAG"] == "1" {
-            didCompleteMove = PointerAutomation.drag(
-                from: interactionPoint(for: source),
-                to: interactionPoint(for: destination),
-                steps: 40
-            )
-        } else if app.bundleIdentifier == "com.apple.Chess" {
+        if app.bundleIdentifier == "com.apple.Chess" {
             didCompleteMove =
-                PointerAutomation.click(at: interactionPoint(for: source)) &&
+                service.activate(source) &&
                 { Thread.sleep(forTimeInterval: 0.12); return true }() &&
-                PointerAutomation.click(at: interactionPoint(for: destination))
+                service.activate(destination)
         } else {
             didCompleteMove = PointerAutomation.drag(from: source.frame.center, to: destination.frame.center)
         }
@@ -137,7 +132,8 @@ enum MacClickCLI {
 
         app.activate()
         Thread.sleep(forTimeInterval: 0.08)
-        let didMove = PointerAutomation.move(to: interactionPoint(for: target))
+        let point = target.frame.center
+        let didMove = PointerAutomation.move(to: point)
         if !didMove {
             fputs("maclick: failed to move to \(target.label)\n", stderr)
             exit(EXIT_FAILURE)
@@ -231,25 +227,6 @@ enum MacClickCLI {
     private static func hint(matching label: String, in hints: [HintTarget]) -> HintTarget? {
         let normalized = label.uppercased()
         return hints.first(where: { $0.label == normalized })
-    }
-
-    private static func interactionPoint(for target: HintTarget) -> CGPoint {
-        guard target.bundleIdentifier == "com.apple.Chess",
-              let square = boardSquare(in: target.description),
-              let rank = Int(String(square.last!)) else {
-            return target.frame.center
-        }
-
-        let upwardOffset = CGFloat((9 - rank) * 8)
-        return CGPoint(x: target.frame.midX, y: target.frame.midY + upwardOffset)
-    }
-
-    private static func boardSquare(in description: String) -> String? {
-        let pattern = #"[a-h][1-8]"#
-        guard let range = description.range(of: pattern, options: .regularExpression) else {
-            return nil
-        }
-        return String(description[range])
     }
 
     private static func printUsage() {
