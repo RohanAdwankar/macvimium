@@ -323,7 +323,7 @@ enum MacClickCLI {
     }
 
     private static func activate(_ application: NSRunningApplication) {
-        _ = application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        _ = application.activate(options: [.activateAllWindows])
         Thread.sleep(forTimeInterval: 0.18)
     }
 
