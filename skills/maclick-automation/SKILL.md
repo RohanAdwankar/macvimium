@@ -27,6 +27,12 @@ List actionable hints for a running app:
 maclick Chess --help
 ```
 
+Capture the selected window with hint overlays:
+
+```bash
+maclick Chess screenshot /tmp/chess-hints.png
+```
+
 Recenter an off-screen window:
 
 ```bash
@@ -48,21 +54,17 @@ maclick Chess AN to SE
 ## Workflow
 
 1. Open the app with `maclick open ...` if it is not already running.
-2. Inspect with `maclick <app> --help` and read the semantic labels.
-3. Recenter with `maclick <app> --recenter` if the window is off-screen or awkwardly placed.
-4. Click with `maclick <app> <hint>`.
-5. Drag with `maclick <app> <from> to <to>`.
-6. When state matters, take a screenshot after actions:
-
-```bash
-screencapture -C /tmp/maclick-check.png
-```
+2. Inspect with `maclick <window> --help` and read the semantic labels.
+3. Recenter with `maclick <window> --recenter` if the window is off-screen or awkwardly placed.
+4. Capture `maclick <window> screenshot ...` when you need pixel-grounded confirmation.
+5. Click with `maclick <window> <hint>`.
+6. Drag with `maclick <window> <from> to <to>`.
 
 ## Tips
 
-- The `<app>` argument is usually the app name, for example `Chess`, `Calculator`, or `Terminal`.
+- The first argument is a window query. It can be an app name like `Chess` or `Calculator`, or part of the visible window title.
 - Match hints exactly, but case does not matter.
 - Re-run `--help` after each meaningful UI change because hints may be reassigned.
-- For apps that expose real AX actions, `maclick` prefers semantic activation over raw mouse input. Chess works best through this path.
-- For generic canvases and custom controls, `maclick` falls back to real HID mouse movement and dragging.
-- If a control is visually present but hard to activate through Accessibility alone, `maclick` already falls back to a real HID mouse click for button-like targets.
+- Hints are generated from the selected window subtree, not the whole app process. That avoids mixing controls from unrelated windows or sheets.
+- `screenshot` writes a PNG of the selected window with the current hint labels rendered on top.
+- Use drag for true pointer drags. For square-grid apps and similar controls, two explicit clicks can be more reliable than a drag.

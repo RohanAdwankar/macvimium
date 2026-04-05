@@ -11,6 +11,28 @@ public struct HintTarget {
     public let description: String
 }
 
+public struct WindowTarget {
+    public let application: NSRunningApplication
+    public let windowHandle: AXElementHandle
+    public let title: String
+    public let frame: CGRect
+    public let isFocused: Bool
+
+    public init(
+        application: NSRunningApplication,
+        windowHandle: AXElementHandle,
+        title: String,
+        frame: CGRect,
+        isFocused: Bool
+    ) {
+        self.application = application
+        self.windowHandle = windowHandle
+        self.title = title
+        self.frame = frame
+        self.isFocused = isFocused
+    }
+}
+
 public struct DisplayHintTarget {
     public let label: String
     public let frame: CGRect
@@ -46,13 +68,66 @@ public final class AccessibilityService {
         return AXIsProcessTrustedWithOptions(options)
     }
 
-    public func hintTargets(for application: NSRunningApplication) -> [HintTarget] {
+    public func windowTargets(for application: NSRunningApplication) -> [WindowTarget] {
         let appElement = AXUIElementCreateApplication(application.processIdentifier)
         let focusedWindow = focusedWindow(for: appElement)
-        let windowFrame = focusedWindow.flatMap(frame(for:))
+        let focusedHash = focusedWindow.map(CFHash)
+        let windows = topLevelWindows(for: appElement)
+
+        return windows.compactMap { window in
+            guard
+                let frame = frame(for: window),
+                frame.width > 0,
+                frame.height > 0
+            else {
+                return nil
+            }
+
+            let title = windowTitle(for: window, application: application)
+            return WindowTarget(
+                application: application,
+                windowHandle: AXElementHandle(window),
+                title: title,
+                frame: frame,
+                isFocused: focusedHash == CFHash(window)
+            )
+        }.sorted { lhs, rhs in
+            if lhs.isFocused != rhs.isFocused {
+                return lhs.isFocused && !rhs.isFocused
+            }
+
+            if lhs.application.isActive != rhs.application.isActive {
+                return lhs.application.isActive && !rhs.application.isActive
+            }
+
+            if lhs.title != rhs.title {
+                return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            }
+
+            return lhs.frame.minY > rhs.frame.minY
+        }
+    }
+
+    public func focusedWindowTarget(for application: NSRunningApplication) -> WindowTarget? {
+        let windows = windowTargets(for: application)
+        return windows.first(where: \.isFocused) ?? windows.first
+    }
+
+    public func hintTargets(for application: NSRunningApplication) -> [HintTarget] {
+        guard let windowTarget = focusedWindowTarget(for: application) else {
+            return []
+        }
+
+        return hintTargets(for: windowTarget)
+    }
+
+    public func hintTargets(for windowTarget: WindowTarget) -> [HintTarget] {
         let elements = filteredElements(
-            from: actionableElements(startingAt: appElement, constrainedTo: windowFrame),
-            constrainedTo: windowFrame
+            from: actionableElements(
+                startingAt: windowTarget.windowHandle.element,
+                constrainedTo: windowTarget.frame
+            ),
+            constrainedTo: windowTarget.frame
         )
         let labels = HintLabelGenerator.labels(count: elements.count)
 
@@ -71,7 +146,7 @@ public final class AccessibilityService {
                 frame: frame,
                 elementHandle: AXElementHandle(element),
                 role: role,
-                bundleIdentifier: application.bundleIdentifier,
+                bundleIdentifier: windowTarget.application.bundleIdentifier,
                 description: elementDescription(for: element)
             )
         }
@@ -97,20 +172,30 @@ public final class AccessibilityService {
         return false
     }
 
-    public func moveFocusedWindow(of application: NSRunningApplication, to origin: CGPoint) -> Bool {
-        let appElement = AXUIElementCreateApplication(application.processIdentifier)
-        guard
-            let window = focusedWindow(for: appElement),
-            let value = AXHelpers.axValue(point: origin)
-        else {
+    public func moveWindow(_ windowTarget: WindowTarget, to origin: CGPoint) -> Bool {
+        guard let value = AXHelpers.axValue(point: origin) else {
             return false
         }
 
-        return AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value) == .success
+        return AXUIElementSetAttributeValue(
+            windowTarget.windowHandle.element,
+            kAXPositionAttribute as CFString,
+            value
+        ) == .success
     }
 
     private func focusedWindow(for appElement: AXUIElement) -> AXUIElement? {
         AXHelpers.value(appElement, attribute: kAXFocusedWindowAttribute) as AXUIElement?
+    }
+
+    private func topLevelWindows(for appElement: AXUIElement) -> [AXUIElement] {
+        guard let rawValue = copyAttributeValue(for: appElement, attribute: kAXWindowsAttribute as String) else {
+            return []
+        }
+
+        return extractElements(from: rawValue).filter { window in
+            role(for: window) == kAXWindowRole as String
+        }
     }
 
     private func actionableElements(startingAt root: AXUIElement, constrainedTo frameConstraint: CGRect?) -> [AXUIElement] {
@@ -399,6 +484,18 @@ public final class AccessibilityService {
 
     private func role(for element: AXUIElement) -> String? {
         AXHelpers.value(element, attribute: kAXRoleAttribute) as String?
+    }
+
+    private func windowTitle(for window: AXUIElement, application: NSRunningApplication) -> String {
+        let candidates = [
+            AXHelpers.value(window, attribute: kAXTitleAttribute) as String?,
+            AXHelpers.value(window, attribute: kAXDocumentAttribute) as String?,
+            application.localizedName,
+        ]
+
+        return candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { !$0.isEmpty }) ?? "untitled window"
     }
 
     private func frame(for element: AXUIElement) -> CGRect? {

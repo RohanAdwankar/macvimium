@@ -21,18 +21,13 @@ enum MacClickCLI {
         case "open":
             openApplication(arguments.dropFirst())
         default:
-            handleWindowCommand(arguments)
+            handleTargetCommand(arguments)
         }
     }
 
-    private static func handleWindowCommand(_ arguments: [String]) {
-        guard let windowQuery = arguments.first else {
+    private static func handleTargetCommand(_ arguments: [String]) {
+        guard let targetQuery = arguments.first else {
             printUsage()
-            exit(EXIT_FAILURE)
-        }
-
-        guard let app = resolveApplication(query: windowQuery) else {
-            fputs("maclick: could not find a running app matching '\(windowQuery)'\n", stderr)
             exit(EXIT_FAILURE)
         }
 
@@ -42,34 +37,44 @@ enum MacClickCLI {
             exit(EXIT_FAILURE)
         }
 
-        let hints = service.hintTargets(for: app)
+        guard let windowTarget = resolveWindowTarget(query: targetQuery, service: service) else {
+            fputs("maclick: could not find a running window matching '\(targetQuery)'\n", stderr)
+            exit(EXIT_FAILURE)
+        }
+
+        let hints = service.hintTargets(for: windowTarget)
         guard !hints.isEmpty else {
-            fputs("maclick: no actionable targets found for \(app.localizedName ?? windowQuery)\n", stderr)
+            fputs("maclick: no actionable targets found for \(windowTarget.title)\n", stderr)
             exit(EXIT_FAILURE)
         }
 
         if arguments.count == 2 && arguments[1] == "--help" {
-            printHints(app: app, hints: hints)
+            printHints(windowTarget: windowTarget, hints: hints)
             return
         }
 
         if arguments.count == 2 && arguments[1] == "--recenter" {
-            recenter(app: app, service: service)
+            recenter(windowTarget: windowTarget, service: service)
             return
         }
 
         if arguments.count == 2 {
-            click(label: arguments[1], app: app, hints: hints, service: service)
+            click(label: arguments[1], windowTarget: windowTarget, hints: hints, service: service)
             return
         }
 
         if arguments.count == 3 && arguments[2].lowercased() == "hover" {
-            hover(label: arguments[1], app: app, hints: hints)
+            hover(label: arguments[1], windowTarget: windowTarget, hints: hints)
+            return
+        }
+
+        if arguments.count >= 2 && arguments[1].lowercased() == "screenshot" {
+            screenshot(windowTarget: windowTarget, hints: hints, outputPath: arguments.count >= 3 ? arguments[2] : nil)
             return
         }
 
         if arguments.count == 4 && arguments[2].lowercased() == "to" {
-            drag(from: arguments[1], to: arguments[3], app: app, hints: hints, service: service)
+            drag(from: arguments[1], to: arguments[3], windowTarget: windowTarget, hints: hints)
             return
         }
 
@@ -77,14 +82,18 @@ enum MacClickCLI {
         exit(EXIT_FAILURE)
     }
 
-    private static func click(label: String, app: NSRunningApplication, hints: [HintTarget], service: AccessibilityService) {
+    private static func click(
+        label: String,
+        windowTarget: WindowTarget,
+        hints: [HintTarget],
+        service: AccessibilityService
+    ) {
         guard let target = hint(matching: label, in: hints) else {
             fputs("maclick: unknown hint '\(label)'\n", stderr)
             exit(EXIT_FAILURE)
         }
 
-        app.activate()
-        Thread.sleep(forTimeInterval: 0.08)
+        activate(windowTarget.application)
         let didActivate = service.activate(target)
         if !didActivate {
             fputs("maclick: failed to activate \(target.label) (\(target.description))\n", stderr)
@@ -96,9 +105,8 @@ enum MacClickCLI {
     private static func drag(
         from sourceLabel: String,
         to destinationLabel: String,
-        app: NSRunningApplication,
-        hints: [HintTarget],
-        service: AccessibilityService
+        windowTarget: WindowTarget,
+        hints: [HintTarget]
     ) {
         guard let source = hint(matching: sourceLabel, in: hints) else {
             fputs("maclick: unknown source hint '\(sourceLabel)'\n", stderr)
@@ -109,17 +117,12 @@ enum MacClickCLI {
             exit(EXIT_FAILURE)
         }
 
-        app.activate()
-        Thread.sleep(forTimeInterval: 0.08)
-        let didCompleteMove: Bool
-        if app.bundleIdentifier == "com.apple.Chess" {
-            didCompleteMove =
-                service.activate(source) &&
-                { Thread.sleep(forTimeInterval: 0.12); return true }() &&
-                service.activate(destination)
-        } else {
-            didCompleteMove = PointerAutomation.drag(from: source.frame.center, to: destination.frame.center)
-        }
+        activate(windowTarget.application)
+        let didCompleteMove = PointerAutomation.drag(
+            from: source.frame.center,
+            to: destination.frame.center,
+            pid: windowTarget.application.processIdentifier
+        )
 
         if !didCompleteMove {
             fputs("maclick: failed to drag \(source.label) to \(destination.label)\n", stderr)
@@ -129,22 +132,40 @@ enum MacClickCLI {
         print("maclick: dragged \(source.label) -> \(destination.label)")
     }
 
-    private static func hover(label: String, app: NSRunningApplication, hints: [HintTarget]) {
+    private static func hover(label: String, windowTarget: WindowTarget, hints: [HintTarget]) {
         guard let target = hint(matching: label, in: hints) else {
             fputs("maclick: unknown hint '\(label)'\n", stderr)
             exit(EXIT_FAILURE)
         }
 
-        app.activate()
-        Thread.sleep(forTimeInterval: 0.08)
+        activate(windowTarget.application)
         let point = target.frame.center
-        let didMove = PointerAutomation.move(to: point)
+        let didMove = PointerAutomation.move(
+            to: point,
+            pid: windowTarget.application.processIdentifier
+        )
         if !didMove {
             fputs("maclick: failed to move to \(target.label)\n", stderr)
             exit(EXIT_FAILURE)
         }
 
         print("maclick: hovered \(target.label) -> \(target.description)")
+    }
+
+    private static func screenshot(windowTarget: WindowTarget, hints: [HintTarget], outputPath: String?) {
+        let destination = outputURL(for: outputPath, title: windowTarget.title)
+        let didCapture = HintScreenshotRenderer.capture(
+            windowTarget: windowTarget,
+            hints: hints,
+            to: destination
+        )
+
+        if !didCapture {
+            fputs("maclick: failed to capture screenshot for \(windowTarget.title)\n", stderr)
+            exit(EXIT_FAILURE)
+        }
+
+        print("maclick: screenshot \(destination.path)")
     }
 
     private static func openApplication(_ arguments: ArraySlice<String>) {
@@ -178,9 +199,12 @@ enum MacClickCLI {
         print("maclick: opened \(rawTarget)")
     }
 
-    private static func printHints(app: NSRunningApplication, hints: [HintTarget]) {
+    private static func printHints(windowTarget: WindowTarget, hints: [HintTarget]) {
         let debugFrames = ProcessInfo.processInfo.environment["MACLICK_DEBUG"] == "1"
-        print("maclick: showing \(hints.count) hints for \(app.localizedName ?? "unknown app")")
+        print(
+            "maclick: showing \(hints.count) hints for " +
+            "\(windowTarget.application.localizedName ?? "unknown app") | \(windowTarget.title)"
+        )
         for hint in hints {
             if debugFrames {
                 let frame = hint.frame
@@ -194,18 +218,18 @@ enum MacClickCLI {
         }
     }
 
-    private static func recenter(app: NSRunningApplication, service: AccessibilityService) {
+    private static func recenter(windowTarget: WindowTarget, service: AccessibilityService) {
         let origin = CGPoint(x: 80, y: 80)
-        guard service.moveFocusedWindow(of: app, to: origin) else {
-            fputs("maclick: failed to recenter \(app.localizedName ?? "app")\n", stderr)
+        guard service.moveWindow(windowTarget, to: origin) else {
+            fputs("maclick: failed to recenter \(windowTarget.title)\n", stderr)
             exit(EXIT_FAILURE)
         }
 
-        app.activate()
-        print("maclick: recentered \(app.localizedName ?? "app")")
+        activate(windowTarget.application)
+        print("maclick: recentered \(windowTarget.title)")
     }
 
-    private static func resolveApplication(query: String) -> NSRunningApplication? {
+    private static func resolveWindowTarget(query: String, service: AccessibilityService) -> WindowTarget? {
         let normalizedQuery = query
             .replacingOccurrences(of: ".app", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -221,11 +245,55 @@ enum MacClickCLI {
                 app.bundleIdentifier?.lowercased(),
             ].compactMap { $0 }
 
-            return candidates.contains(where: { $0 == normalizedQuery || $0.contains(normalizedQuery) })
+            if candidates.contains(where: { $0 == normalizedQuery || $0.contains(normalizedQuery) }) {
+                return true
+            }
+
+            let windows = service.windowTargets(for: app)
+            return windows.contains { target in
+                target.title.lowercased().contains(normalizedQuery)
+            }
+        }.sorted { lhs, rhs in
+            (lhs.isActive ? 0 : 1) < (rhs.isActive ? 0 : 1)
         }
 
-        return runningApps.sorted { lhs, rhs in
-            (lhs.isActive ? 0 : 1) < (rhs.isActive ? 0 : 1)
+        var matches: [WindowTarget] = []
+        for app in runningApps {
+            let targets = service.windowTargets(for: app)
+            let exactTitleMatches = targets.filter {
+                $0.title.lowercased() == normalizedQuery
+            }
+            if !exactTitleMatches.isEmpty {
+                matches.append(contentsOf: exactTitleMatches)
+                continue
+            }
+
+            let partialTitleMatches = targets.filter {
+                $0.title.lowercased().contains(normalizedQuery)
+            }
+            if !partialTitleMatches.isEmpty {
+                matches.append(contentsOf: partialTitleMatches)
+                continue
+            }
+
+            let appMatches = [app.localizedName?.lowercased(), app.bundleIdentifier?.lowercased()]
+                .compactMap { $0 }
+                .contains { $0 == normalizedQuery || $0.contains(normalizedQuery) }
+            if appMatches, let focused = targets.first(where: \.isFocused) ?? targets.first {
+                matches.append(focused)
+            }
+        }
+
+        return matches.sorted { lhs, rhs in
+            if lhs.isFocused != rhs.isFocused {
+                return lhs.isFocused && !rhs.isFocused
+            }
+
+            if lhs.application.isActive != rhs.application.isActive {
+                return lhs.application.isActive && !rhs.application.isActive
+            }
+
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }.first
     }
 
@@ -234,12 +302,38 @@ enum MacClickCLI {
         return hints.first(where: { $0.label == normalized })
     }
 
+    private static func outputURL(for outputPath: String?, title: String) -> URL {
+        if let outputPath, !outputPath.isEmpty {
+            return URL(fileURLWithPath: outputPath)
+        }
+
+        let slug = title
+            .lowercased()
+            .map { $0.isLetter || $0.isNumber ? $0 : "-" }
+            .reduce(into: "") { result, character in
+                if character == "-", result.last == "-" {
+                    return
+                }
+                result.append(character)
+            }
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+
+        let filename = slug.isEmpty ? "maclick-window" : slug
+        return URL(fileURLWithPath: "/tmp/\(filename)-hints.png")
+    }
+
+    private static func activate(_ application: NSRunningApplication) {
+        _ = application.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        Thread.sleep(forTimeInterval: 0.18)
+    }
+
     private static func printUsage() {
         let usage = """
         Usage:
           maclick open <AppName|/path/to/App.app>
           maclick <window> --help
           maclick <window> --recenter
+          maclick <window> screenshot [output.png]
           maclick <window> <hint>
           maclick <window> <hint> hover
           maclick <window> <from_hint> to <to_hint>
